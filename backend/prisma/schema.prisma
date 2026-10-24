@@ -1,0 +1,438 @@
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+ 
+}
+
+
+enum TokenType {
+  REFRESH
+  RESET_PASSWORD
+  EMAIL_VERIFICATION
+}
+enum AccountType {
+  BANK
+  CASH
+  CREDIT_CARD
+  SAVINGS
+  CUSTOM
+}
+
+enum AccountStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum CategoryType {
+  INCOME
+  EXPENSE
+}
+
+enum CategoryStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum RecurringFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+enum RecurringStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum DeviceType {
+  WEB
+  IOS
+  ANDROID
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+enum JobRunStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique 
+  users       User[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  code        String           @unique    
+  label       String                          
+  description String?
+  roles       RolePermission[]
+  createdAt   DateTime         @default(now())
+}
+
+model RolePermission {
+  id          String           @id @default(uuid())
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  roleId       String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  permissionId String
+  createdAt    DateTime   @default(now())
+
+  @@unique([roleId, permissionId])
+}
+
+model User {
+  id                String           @id @default(uuid())
+  firstName         String
+  lastName          String
+  email             String   @unique
+  password          String?
+  googleId          String?  @unique
+  dateOfBirth       DateTime? 
+  profileAvatar     String?
+  isEmailVerified   Boolean  @default(false)
+  timezone          String   @default("UTC")
+  Currency String   @default("TND") 
+
+  role   Role @relation(fields: [roleId], references: [id])
+  roleId String
+
+  tokens                UserToken[]
+  accounts              Account[]
+  categories            Category[]
+  transactions          Transaction[]
+  budgets               Budget[]
+  recurringTransactions RecurringTransaction[]
+  financialGoals        FinancialGoal[]
+  notifications         Notification[]
+  notificationPrefs     NotificationPreference[]
+  deviceTokens          DeviceToken[]
+  auditLogs             AuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model UserToken {
+  id        String           @id @default(uuid())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  type      TokenType
+  value     String    
+  expiresAt DateTime
+  revoked   Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  @@index([userId, type])
+}
+model Account {
+  id      String           @id @default(uuid())
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId  String
+  name    String
+  type    AccountType
+  currency String       
+  balance Decimal       @default(0) 
+  notes   String?
+  status  AccountStatus @default(ACTIVE)
+
+  transactionsAsSource      Transaction[] @relation("SourceAccount")
+  transactionsAsDestination Transaction[] @relation("DestinationAccount")
+  recurringAsSource         RecurringTransaction[] @relation("RecurringSourceAccount")
+  recurringAsDestination    RecurringTransaction[] @relation("RecurringDestinationAccount")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+}
+
+
+model Category {
+  id     String         @id @default(uuid())
+  user   User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String?
+  name   String
+  type   CategoryType
+  status CategoryStatus @default(ACTIVE)
+  sortOrder Int         @default(0)
+
+  parent   Category?  @relation("CategoryChildren", fields: [parentId], references: [id], onDelete: Restrict)
+  parentId String?
+  children Category[] @relation("CategoryChildren")
+
+  transactions          Transaction[]
+  budgets               Budget[]
+  recurringTransactions RecurringTransaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, parentId])
+}
+
+
+
+model Transaction {
+  id     String           @id @default(uuid())
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  account   Account @relation("SourceAccount", fields: [accountId], references: [id])
+  accountId String
+
+  relatedAccount   Account? @relation("DestinationAccount", fields: [relatedAccountId], references: [id])
+  relatedAccountId String?
+
+  category   Category? @relation(fields: [categoryId], references: [id])
+  categoryId String?
+
+recurringTransaction RecurringTransaction? @relation(fields: [recurringTransactionId], references: [id], onDelete: SetNull)
+recurringTransactionId String?
+
+  type              TransactionType
+  amount            Decimal @db.Decimal(15, 3)
+  destinationAmount Decimal? @db.Decimal(15, 3)   
+  exchangeRate      Decimal? @db.Decimal(18, 8)   
+  date              DateTime
+  description       String?
+  notes             String? @db.Text
+
+  receipts Receipt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([recurringTransactionId, date])
+  @@index([userId, date])
+  @@index([userId, categoryId, date])
+}
+
+model Receipt {
+  id            String           @id @default(uuid())
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  transactionId String
+  url           String
+  fileName      String
+  mimeType      String
+  uploadedAt    DateTime    @default(now())
+}
+
+
+
+model Budget {
+  id     String           @id @default(uuid())
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  category   Category @relation(fields: [categoryId], references: [id])
+  categoryId String
+
+  amount Decimal @db.Decimal(15, 3)  
+  periodStart              DateTime 
+  warningThresholdPercent  Int      @default(80)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, categoryId, periodStart])
+  @@index([userId, periodStart])
+}
+
+
+
+model RecurringTransaction {
+  id     String           @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  account   Account @relation("RecurringSourceAccount", fields: [accountId], references: [id])
+  accountId String
+
+  relatedAccount   Account? @relation("RecurringDestinationAccount", fields: [relatedAccountId], references: [id])
+  relatedAccountId String?
+
+  category   Category? @relation(fields: [categoryId], references: [id])
+  categoryId String?
+
+  type            TransactionType
+  amount            Decimal  @db.Decimal(15, 3)
+  frequency       RecurringFrequency
+  intervalCount   Int                @default(1)
+  startDate         DateTime @db.Date
+  endDate           DateTime? @db.Date
+  nextExecutionDate DateTime @db.Date
+  lastExecutionDate   DateTime? @db.Date
+  consecutiveFailures Int       @default(0)
+  lastError           String?   @db.VarChar(500)      
+  status          RecurringStatus    @default(ACTIVE)
+  description     String?
+
+  generatedTransactions Transaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, nextExecutionDate])
+  @@index([status, nextExecutionDate])
+}
+
+model JobRun {
+  id         String       @id @default(uuid())
+  jobName    String
+  status     JobRunStatus
+  startedAt  DateTime
+  finishedAt DateTime
+  processed  Int          @default(0)
+  succeeded  Int          @default(0)
+  failed     Int          @default(0)
+  details    Json?
+  error      String?      @db.Text
+
+  @@index([jobName, startedAt])
+}
+model FinancialGoal {
+  id     String           @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  name                        String
+  targetAmount                Decimal   
+  currentAmount                Decimal   @default(0)
+  targetDate                  DateTime?  
+  status                      GoalStatus @default(ACTIVE)
+  lastNotifiedMilestonePercent Int?
+
+  contributions GoalContribution[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+}
+
+model GoalContribution {
+  id        String           @id @default(uuid())
+  goal      FinancialGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  goalId    String
+  amount    Decimal       
+  date      DateTime      
+  note      String?
+  createdAt DateTime      @default(now())
+}
+
+
+model Action {
+  id          String           @id @default(uuid())
+  code        String   @unique
+  description String?
+  templates     NotificationTemplate[]
+  notifications Notification[]
+  preferences   NotificationPreference[]
+  createdAt   DateTime @default(now())
+}
+
+model NotificationTemplate {
+  id            String           @id @default(uuid())
+  action        Action   @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  actionId      String
+  language      String   @default("en")
+  titleTemplate String 
+  bodyTemplate  String   
+  isActive      Boolean  @default(true)
+  notifications Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([actionId, language])
+}
+
+
+model Notification {
+  id     String           @id @default(uuid())
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  action   Action @relation(fields: [actionId], references: [id])
+  actionId String
+
+  template   NotificationTemplate @relation(fields: [templateId], references: [id])
+  templateId String
+
+  data           Json?    // entityType/entityId 
+  renderedTitle  String    
+  renderedMessage String   
+  isRead         Boolean   @default(false)
+  readAt         DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, actionId, createdAt])
+}
+
+model NotificationPreference {
+  id           String           @id @default(uuid())
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  action       Action  @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  actionId     String
+  pushEnabled  Boolean @default(true)
+  inAppEnabled Boolean @default(true)
+
+  @@unique([userId, actionId])
+}
+
+model DeviceToken {
+  id         String           @id @default(uuid())
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  fcmToken   String     @unique 
+  deviceType DeviceType
+  isValid    Boolean    @default(true)
+  lastUsedAt DateTime?
+  createdAt  DateTime   @default(now())
+}
+
+model AuditLog {
+  id         String           @id @default(uuid())
+  user       User        @relation(fields: [userId], references: [id])
+  userId     String
+  entityType String
+  entityId   Int
+  action     AuditAction
+  oldValues  Json?
+  newValues  Json?
+  createdAt  DateTime    @default(now())
+
+  @@index([entityType, entityId])
+}

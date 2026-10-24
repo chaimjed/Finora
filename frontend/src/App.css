@@ -1,0 +1,14 @@
+@import "tailwindcss";
+@import "flowbite-react/plugin/tailwindcss";
+@source "../.flowbite-react/class-list.json";
+
+@custom-variant dark (&:is(.dark *));
+body {
+  @apply relative z-1 bg-gray-50 font-outfit font-normal dark:bg-gray-900;
+}
+@theme {
+  --color-brand-25: #f2f7ff;
+  --color-brand-50: #ecf3ff;
+  --color-brand-500: #465fff;
+  --color-brand-950: #1e2a78;
+}
